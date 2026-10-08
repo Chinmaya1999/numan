@@ -19,7 +19,7 @@ jobs:
         with: { ref: "${{ github.event.workflow_run.head_sha || github.sha }}" }
 
       - name: Package release (code only; pages + data stay on the server)
-        run: tar --exclude='.git*' --exclude=node_modules --exclude=private --exclude=data --exclude='*.pem' --exclude=test --exclude=electron -czf release.tgz .
+        run: tar --exclude='.git*' --exclude=node_modules --exclude=private --exclude=data --exclude='*.pem' --exclude=test --exclude=electron -czf "$RUNNER_TEMP/release.tgz" .
 
       - name: SSH setup
         run: |
@@ -29,7 +29,7 @@ jobs:
 
       - name: Upload and activate
         run: |
-          scp -i ~/.ssh/key release.tgz deploy/activate.sh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/
+          scp -i ~/.ssh/key "$RUNNER_TEMP/release.tgz" deploy/activate.sh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/
           ssh -i ~/.ssh/key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} 'bash /tmp/activate.sh /tmp/release.tgz'
 
       - name: Smoke test (public HTTPS)
