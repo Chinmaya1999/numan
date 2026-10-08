@@ -24,13 +24,18 @@ jobs:
       - name: SSH setup
         env:
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_SSH_KEY_B64: ${{ secrets.EC2_SSH_KEY_B64 }}
           EC2_HOST: ${{ secrets.EC2_HOST }}
         run: |
           install -m 700 -d ~/.ssh
-          # printf keeps the newlines and adds the final one that OpenSSH requires
-          printf '%s\n' "$EC2_SSH_KEY" | tr -d '\r' > ~/.ssh/key
+          # Preferred: base64 secret (survives any copy/paste). Fallback: raw PEM secret.
+          if [ -n "$EC2_SSH_KEY_B64" ]; then
+            printf '%s' "$EC2_SSH_KEY_B64" | tr -d ' \n\r' | base64 -d > ~/.ssh/key
+          else
+            printf '%s\n' "$EC2_SSH_KEY" | tr -d '\r' > ~/.ssh/key
+          fi
           chmod 600 ~/.ssh/key
-          ssh-keygen -y -f ~/.ssh/key >/dev/null || { echo "EC2_SSH_KEY secret is not a valid private key. Paste the whole .pem file, including the BEGIN and END lines."; exit 1; }
+          ssh-keygen -y -f ~/.ssh/key >/dev/null || { echo "No valid SSH key. Create the secret EC2_SSH_KEY_B64 from: base64 -i adihuman.pem"; exit 1; }
           ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
 
       - name: Upload and activate
