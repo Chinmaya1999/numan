@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Access Admin</title>
+<meta name="robots" content="noindex,nofollow">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=Archivo+Expanded:wght@700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f2ee;--card:#fff;--ink:#2a1b18;--mute:#7a6c66;--line:#d9d3c9;--accent:#5c1d22;--ok:#2f6b3a;--warn:#a0521a}
+@media (prefers-color-scheme:dark){:root{--bg:#171210;--card:#211a17;--ink:#efe9e1;--mute:#a09389;--line:#352c28;--accent:#d98a8f;--ok:#7fc58b;--warn:#e6a36a}}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 Archivo,system-ui,sans-serif;padding:24px 16px 60px}
+.wrap{max-width:920px;margin:0 auto}
+h1{font:700 20px "Archivo Expanded",Archivo;letter-spacing:.16em}
+h1 small{display:block;font:500 12px Archivo;letter-spacing:.06em;color:var(--mute);margin-top:6px}
+header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:24px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+input{font:inherit;padding:11px 13px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--ink);min-width:0}
+input:focus{outline:2px solid var(--accent);outline-offset:1px}
+button{font:600 12px Archivo;letter-spacing:.1em;text-transform:uppercase;padding:11px 15px;border:0;border-radius:9px;background:var(--ink);color:var(--bg);cursor:pointer;white-space:nowrap}
+button.ghost{background:none;color:var(--ink);border:1px solid var(--line)}
+button.danger{background:none;color:#b3261e;border:1px solid var(--line)}
+button:hover{opacity:.85}
+#login{max-width:360px;margin:18vh auto 0;display:flex;flex-direction:column;gap:12px}
+#err,#lerr{color:#b3261e;font-size:13px;min-height:18px}
+form.add{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;margin-bottom:20px}
+.row{display:grid;grid-template-columns:1.2fr 1.5fr auto;gap:14px;align-items:center;padding:16px 0;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.who b{display:block}.who span{color:var(--mute);font-size:13px;word-break:break-all}
+.code{font:600 22px/1 ui-monospace,Menlo,monospace;letter-spacing:.14em;-webkit-user-select:text;user-select:text}
+.exp{font-size:12px;color:var(--mute);margin-top:6px}.exp.soon{color:var(--warn)}
+.acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.empty{color:var(--mute);padding:10px 0}
+.note{color:var(--mute);font-size:13px;margin:0 2px 14px}
+@media(max-width:700px){form.add{grid-template-columns:1fr}.row{grid-template-columns:1fr}.acts{justify-content:flex-start}}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div id="login" class="card" hidden>
+  <h1>ACCESS ADMIN<small>adihuman · Namuna viewer</small></h1>
+  <input id="pw" type="password" placeholder="Admin password" autocomplete="current-password">
+  <button id="go">Sign in</button><div id="lerr"></div>
+</div>
+
+<div class="wrap" id="app" hidden>
+  <header>
+    <h1>ACCESS CODES<small>Each code is valid for 24 hours, then a new one is generated automatically.</small></h1>
+    <button class="ghost" id="out">Sign out</button>
+  </header>
+  <form class="add card" id="add">
+    <input id="n" placeholder="Client name" required maxlength="80">
+    <input id="e" type="email" placeholder="Client email (optional)" maxlength="120">
+    <button>Add client</button>
+  </form>
+  <p class="note">Give a client their current code. They enter it at the viewer's login screen. If they ask again later, copy the new code from here.</p>
+  <div class="card" id="list"></div>
+  <div id="err"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let rows = [];
+const api = async (m, u, b) => {
+  const r = await fetch(u, { method: m, headers: b ? { 'Content-Type': 'application/json' } : {}, body: b ? JSON.stringify(b) : undefined, credentials: 'same-origin' });
+  if (r.status === 401 && !u.includes('login')) { show(false); throw 0; }
+  return r;
+};
+function show(on) { $('login').hidden = on; $('app').hidden = !on; }
+function left(ms) { if (ms <= 0) return 'refreshing…'; const h = Math.floor(ms/36e5), m = Math.floor(ms%36e5/6e4); return h + 'h ' + String(m).padStart(2,'0') + 'm left'; }
+function render() {
+  const box = $('list'); box.textContent = '';
+  if (!rows.length) { const d = document.createElement('div'); d.className = 'empty'; d.textContent = 'No clients yet. Add one above.'; box.append(d); return; }
+  for (const c of rows) {
+    const r = document.createElement('div'); r.className = 'row';
+    const w = document.createElement('div'); w.className = 'who';
+    const b = document.createElement('b'); b.textContent = c.name; const s = document.createElement('span'); s.textContent = c.email || 'no email';
+    w.append(b, s);
+    const k = document.createElement('div'); const cd = document.createElement('div'); cd.className = 'code'; cd.textContent = c.code;
+    const ex = document.createElement('div'); ex.className = 'exp'; ex.dataset.t = c.expiresAt; k.append(cd, ex);
+    const a = document.createElement('div'); a.className = 'acts';
+    const cp = document.createElement('button'); cp.textContent = 'Copy'; cp.onclick = async () => { try { await navigator.clipboard.writeText(c.code); cp.textContent = 'Copied'; setTimeout(() => cp.textContent = 'Copy', 1200); } catch (_) {} };
+    const rg = document.createElement('button'); rg.className = 'ghost'; rg.textContent = 'New code'; rg.onclick = async () => { await api('POST', '/api/admin/clients/' + c.id + '/regen'); load(); };
+    const dl = document.createElement('button'); dl.className = 'danger'; dl.textContent = 'Remove'; dl.onclick = async () => { if (confirm('Remove ' + c.name + '?')) { await api('DELETE', '/api/admin/clients/' + c.id); load(); } };
+    a.append(cp, rg, dl); r.append(w, k, a); box.append(r);
+  }
+  tick();
+}
+function tick() { document.querySelectorAll('.exp').forEach(e => { const ms = +e.dataset.t - Date.now(); e.textContent = 'Auto-changes in ' + left(ms); e.classList.toggle('soon', ms < 36e5); }); }
+async function load() { try { const r = await api('GET', '/api/admin/clients'); rows = await r.json(); show(true); render(); } catch (_) {} }
+$('go').onclick = async () => {
+  $('lerr').textContent = '';
+  const r = await api('POST', '/api/admin/login', { password: $('pw').value });
+  if (!r.ok) { $('lerr').textContent = r.status === 429 ? 'Too many attempts. Try later.' : 'Wrong password.'; return; }
+  $('pw').value = ''; load();
+};
+$('pw').onkeydown = e => { if (e.key === 'Enter') $('go').click(); };
+$('add').onsubmit = async e => {
+  e.preventDefault(); $('err').textContent = '';
+  const r = await api('POST', '/api/admin/clients', { name: $('n').value, email: $('e').value });
+  if (!r.ok) { $('err').textContent = (await r.json()).error || 'Could not add'; return; }
+  $('n').value = $('e').value = ''; load();
+};
+$('out').onclick = async () => { await api('POST', '/api/admin/logout'); show(false); };
+setInterval(tick, 30000); setInterval(() => { if (!$('app').hidden) load(); }, 60000);
+load(); show(false); load();
+</script>
+</body>
+</html>
