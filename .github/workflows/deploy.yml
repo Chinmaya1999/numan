@@ -22,10 +22,16 @@ jobs:
         run: tar --exclude='.git*' --exclude=node_modules --exclude=private --exclude=data --exclude='*.pem' --exclude=test --exclude=electron -czf "$RUNNER_TEMP/release.tgz" .
 
       - name: SSH setup
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
         run: |
           install -m 700 -d ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/key && chmod 600 ~/.ssh/key
-          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+          # printf keeps the newlines and adds the final one that OpenSSH requires
+          printf '%s\n' "$EC2_SSH_KEY" | tr -d '\r' > ~/.ssh/key
+          chmod 600 ~/.ssh/key
+          ssh-keygen -y -f ~/.ssh/key >/dev/null || { echo "EC2_SSH_KEY secret is not a valid private key. Paste the whole .pem file, including the BEGIN and END lines."; exit 1; }
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
 
       - name: Upload and activate
         run: |
