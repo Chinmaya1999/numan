@@ -10,16 +10,17 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = process.env.PORT || 3000;
-const SF = path.join(__dirname, 'data', 'secret');
-fs.mkdirSync(path.dirname(SF), { recursive: true });
+const DATA = process.env.DATA_DIR || path.join(__dirname, 'data');          // persistent: clients, admin pw, secret
+const PRIVATE = process.env.PRIVATE_DIR || path.join(__dirname, 'private'); // source page images, never served statically
+const SF = path.join(DATA, 'secret');
+fs.mkdirSync(DATA, { recursive: true });
 const SECRET = process.env.SESSION_SECRET || (() => {   // persisted so restarts don't log everyone out
   try { return fs.readFileSync(SF, 'utf8'); } catch (_) {}
   const k = crypto.randomBytes(32).toString('hex'); fs.writeFileSync(SF, k, { mode: 0o600 }); return k;
 })();
-const TOTAL = 26;
+const TOTAL = +process.env.TOTAL_PAGES || 26;
 const SESSION_MS = 4 * 60 * 60 * 1000;   // 4 h
 const TOKEN_MS = 2 * 60 * 1000;          // page token life: 2 min
-const DATA = path.join(__dirname, 'data'); fs.mkdirSync(DATA, { recursive: true });
 const CF = path.join(DATA, 'clients.json'), AF = path.join(DATA, 'admin.json');
 const CODE_TTL = 24 * 60 * 60 * 1000;                       // access codes regenerate every 24 h
 const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';           // no look-alike characters
@@ -32,7 +33,7 @@ function rotate() {                                          // lazily rotate an
   for (const c of clients) if (!c.issuedAt || now - c.issuedAt >= CODE_TTL) { c.code = newCode(); c.issuedAt = now; ch = true; }
   if (ch) save();
 }
-setInterval(rotate, 60 * 1000); rotate();
+setInterval(rotate, 60 * 1000).unref(); rotate();
 // admin password: ADMIN_PASSWORD env, else generated once and stored in data/admin.json
 let ADMIN_PW = process.env.ADMIN_PASSWORD;
 if (!ADMIN_PW) {
@@ -102,7 +103,7 @@ app.get('/api/page/:n', auth, pageLimit, async (req, res) => {
   if (!(n >= 1 && n <= TOTAL) || !exp || +exp < Date.now() || !sig || !safeEq(sig, sign(`${req.user.id}|${n}|${exp}`)))
     return res.status(403).json({ error: 'token' });
   try {
-    const file = path.join(__dirname, 'private', 'pages', `p-${String(n).padStart(2, '0')}.jpg`);
+    const file = path.join(PRIVATE, 'pages', `p-${String(n).padStart(2, '0')}.jpg`);
     const meta = await sharp(file).metadata();
     const w = meta.width, h = meta.height, fs_ = Math.round(w / 80);
     const esc = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
@@ -150,4 +151,6 @@ app.delete('/api/admin/clients/:id', adminAuth, (req, res) => { clients = client
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'admin', 'admin.html')));
 
 app.use(express.static(path.join(__dirname, 'public'), { index: 'index.html', dotfiles: 'deny' }));
-app.listen(PORT, () => console.log(`Namuna viewer on http://localhost:${PORT}`));
+app.get('/healthz', (req, res) => res.json({ ok: true }));
+if (require.main === module) app.listen(PORT, '127.0.0.1', () => console.log(`Namuna viewer on http://127.0.0.1:${PORT}`));
+module.exports = app;
