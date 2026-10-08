@@ -17,6 +17,7 @@ fi
 echo "== app user + layout"
 id namuna >/dev/null 2>&1 || useradd --system --home-dir $APP --shell /sbin/nologin namuna
 mkdir -p $APP/releases $APP/shared/private/pages $APP/shared/data
+chown ec2-user:ec2-user $APP            # deploy user creates the 'current' symlink here
 chown -R ec2-user:ec2-user $APP/releases
 chown -R namuna:namuna $APP/shared && chmod 750 $APP/shared
 [ -f $APP/shared/.env ] || cat > $APP/shared/.env <<ENV

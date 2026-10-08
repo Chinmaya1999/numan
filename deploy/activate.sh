@@ -9,7 +9,8 @@ PREV="$(readlink -f $APP/current 2>/dev/null || true)"
 
 mkdir -p "$REL" && tar -xzf "$TARBALL" -C "$REL"
 cd "$REL" && npm ci --omit=dev --no-audit --no-fund
-ln -sfn "$REL" $APP/current.new && mv -Tf $APP/current.new $APP/current
+ln -sfn "$REL" $APP/current.new
+mv -Tf $APP/current.new $APP/current
 sudo systemctl restart namuna
 
 for i in $(seq 1 20); do
@@ -25,7 +26,8 @@ done
 echo "!! health check failed — rolling back" >&2
 sudo journalctl -u namuna -n 30 --no-pager >&2 || true
 if [ -n "$PREV" ] && [ -d "$PREV" ]; then
-  ln -sfn "$PREV" $APP/current.new && mv -Tf $APP/current.new $APP/current
+  ln -sfn "$PREV" $APP/current.new
+  mv -Tf $APP/current.new $APP/current
   sudo systemctl restart namuna
 fi
 exit 1
