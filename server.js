@@ -62,6 +62,22 @@ const auth = (req, res, next) => {
 };
 const pageToken = (sid, n, exp) => exp + '.' + sign(`${sid}|${n}|${exp}`);
 
+
+const FONT = path.join(__dirname, 'fonts', 'Archivo-SemiBold.ttf');
+const xml = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+const layerCache = new Map();
+async function textLayer(text, px, alpha, angle) {
+  const key = [text, px, alpha, angle].join('|');
+  if (layerCache.has(key)) return layerCache.get(key);
+  let img = sharp({ text: { text: `<span foreground="#2a1b18">${xml(text)}</span>`, font: `Archivo ${px}`, fontfile: FONT, rgba: true, dpi: 72 } })
+    .ensureAlpha().linear([1, 1, 1, alpha], [0, 0, 0, 0]);
+  let buf = await img.png().toBuffer();
+  if (angle) buf = await sharp(buf).rotate(angle, { background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
+  if (layerCache.size > 200) layerCache.clear();
+  layerCache.set(key, buf);
+  return buf;
+}
+
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
@@ -106,16 +122,15 @@ app.get('/api/page/:n', auth, pageLimit, async (req, res) => {
     const file = path.join(PRIVATE, 'pages', `p-${String(n).padStart(2, '0')}.jpg`);
     const meta = await sharp(file).metadata();
     const w = meta.width, h = meta.height, fs_ = Math.round(w / 80);
-    const esc = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-    const mark = 'Designed by adihuman.', big = Math.round(w / 38);
-    // three fixed marks per page, plus one near-invisible per-client trace in the corner
-    const spots = [[0.07, 0.30], [0.40, 0.58], [0.20, 0.88]];
-    const marks = spots.map(([x, y]) => `<text x="${Math.round(w * x)}" y="${Math.round(h * y)}" transform="rotate(-18 ${Math.round(w * x)} ${Math.round(h * y)})">${mark}</text>`).join('');
-    const trace = esc(`${req.user.name} · ${req.user.email} · ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`);
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">
-      <g font-family="Helvetica,Arial,sans-serif" font-size="${big}" font-weight="600" letter-spacing="2" fill="#2a1b18" fill-opacity="0.09">${marks}</g>
-      <text x="${w - 16}" y="${h - 12}" text-anchor="end" font-family="Helvetica,Arial,sans-serif" font-size="${Math.round(w / 150)}" fill="#2a1b18" fill-opacity="0.12">${trace}</text></svg>`;
-    const out = await sharp(file).composite([{ input: Buffer.from(svg) }]).jpeg({ quality: 84 }).toBuffer();
+    const mark = 'Designed by adihuman.';
+    // three fixed marks per page, plus one near-invisible per-client trace in the corner.
+    // Text is rasterised with a bundled font file, so it renders the same on any server.
+    const big = await textLayer(mark, Math.round(w / 38), 0.10, -18);
+    const trace = await textLayer(`${req.user.name} · ${req.user.email} · ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`, Math.max(9, Math.round(w / 150)), 0.14, 0);
+    const bm = await sharp(big).metadata(), tm = await sharp(trace).metadata();
+    const layers = [[0.05, 0.22], [0.40, 0.50], [0.18, 0.76]].map(([x, y]) => ({ input: big, left: Math.round(w * x), top: Math.min(Math.round(h * y), h - bm.height - 1) }));
+    layers.push({ input: trace, left: Math.max(0, w - tm.width - 16), top: h - tm.height - 10 });
+    const out = await sharp(file).composite(layers).jpeg({ quality: 84 }).toBuffer();
     res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store, private', 'X-Content-Type-Options': 'nosniff' }).send(out);
   } catch (e) { console.error(e); res.status(500).end(); }
 });
